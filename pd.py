@@ -50,6 +50,10 @@ class State(Enum):
     CMD = 1,
     TELEM = 2
 
+class State_Telem(Enum):
+    START = 1,
+    RECV = 2
+
 class Decoder(srd.Decoder):
     api_version = 3
     id = 'dshot'
@@ -105,7 +109,10 @@ class Decoder(srd.Decoder):
         self.currbit_es = None
         self.samples_after_motorcmd = None
         self.samples_pp = None
-        
+
+        self.telem_start = None
+        self.state_telem = State_Telem.START
+        self.telem_baudrate_midpoint = 0
 
     def start(self):
         self.bidirectional = True if self.options['bidir'] == 'True' else False
@@ -116,6 +123,8 @@ class Decoder(srd.Decoder):
         # self.halfbitwidth = int((self.samplerate / self.dshot_period) / 2.0)
         #print("start period",self.dshot_period)
         self.out_ann = self.register(srd.OUTPUT_ANN)
+        self.telem_baudrate_midpoint = int((self.samplerate / self.dshot_period*(5/4)) / 2.0)
+        print("telem_midpoint",self.telem_baudrate_midpoint)
 
     def metadata(self, key, value):
         if key == srd.SRD_CONF_SAMPLERATE:
