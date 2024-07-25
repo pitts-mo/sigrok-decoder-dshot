@@ -175,8 +175,9 @@ class Decoder(srd.Decoder):
 
             self.bits = []
             self.ss_packet = None
+            return True
         else:
-            return
+            return False
             #  self.put(results[0][0], results[-1::1][1], self.out_ann,
             #              [1, ['ERROR: INVALID PACKET LENGTH', 'ERR', 'E']])
 
