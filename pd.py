@@ -22,7 +22,7 @@
 
 import sigrokdecode as srd
 from functools import reduce
-
+from enum import Enum
 
 gcr_tables = {
     0b11001: 0x0,
@@ -45,6 +45,10 @@ gcr_tables = {
 
 class SamplerateError(Exception):
     pass
+
+class State(Enum):
+    CMD = 1,
+    TELEM = 2
 
 class Decoder(srd.Decoder):
     api_version = 3
@@ -85,6 +89,7 @@ class Decoder(srd.Decoder):
         self.reset()
 
     def reset(self):
+        self.state = State.CMD
         self.samplerate = None
         # self.oldpin = None
         # self.ss_packet = None
@@ -98,7 +103,7 @@ class Decoder(srd.Decoder):
         self.halfbitwidth = None
         self.currbit_ss = None
         self.currbit_es = None
-        self.samples_toreset = None
+        self.samples_after_motorcmd = None
         self.samples_pp = None
         
 
@@ -106,7 +111,8 @@ class Decoder(srd.Decoder):
         self.bidirectional = True if self.options['bidir'] == 'True' else False
         self.dshot_period = self.dshot_period_lookup[self.options['dshot_rate']]
         self.samples_pp =  int(self.samplerate*self.dshot_period)
-        self.samples_toreset = self.samples_pp*3
+        self.samples_after_motorcmd = self.samples_pp * 3
+        self.samples_after_telempkt = self.samples_pp * 3
         # self.halfbitwidth = int((self.samplerate / self.dshot_period) / 2.0)
         #print("start period",self.dshot_period)
         self.out_ann = self.register(srd.OUTPUT_ANN)
@@ -115,7 +121,7 @@ class Decoder(srd.Decoder):
         if key == srd.SRD_CONF_SAMPLERATE:
             self.samplerate = value
 
-    def handle_bits(self, results):
+    def handle_bits_dshot(self, results):
         #ss, es, bit
         #print(results)
         bits = [result[2] for result in results]
@@ -166,7 +172,7 @@ class Decoder(srd.Decoder):
             #              [1, ['ERROR: INVALID PACKET LENGTH', 'ERR', 'E']])
 
 
-    def handle_bit(self, ss, es, nb_ss):
+    def handle_bit_dshot(self, ss, es, nb_ss):
 
         period = nb_ss - ss
         duty = es - ss
@@ -185,19 +191,31 @@ class Decoder(srd.Decoder):
         results = []
         while True:
             if not self.bidirectional:
-                pins = self.wait([{0: 'r'},{0: 'f'},{'skip':self.samples_toreset}])
+                pins = self.wait([{0: 'r'}, {0: 'f'}, {'skip':self.samples_after_motorcmd}])
             else:
-                pins = self.wait([{0: 'f'},{0: 'r'},{'skip':self.samples_toreset}])
+                if self.state == State.CMD:
+                    #TODO: Increase skip to maximum time for effiency
+                    #TODO: Mark any changes in this time as errors?  Option to reduce load?
+                    pins = self.wait([{0: 'f'}, {0: 'r'}, {'skip':self.samples_after_motorcmd}])
+                elif self.state == State.TELEM:
+                    # First wait for falling edge (idle high)
+                    # Then skip x samples and sample
+                    # Repeat for 21 bits (TBC)
+
+                    pins = self.wait([{0: 'f'}, {0: 'r'}, {'skip': self.samples_after_motorcmd}])
+                #TODO: What happens if it gets stuck in the wrong state?
+
+
 
             if self.currbit_ss and self.currbit_es and self.matched[2]:
                 # Assume end of packet if have seen start and end of a potential bit but no further change within 3 periods
                 # TODO: Confirm wait period this works with spec
-                results += [self.handle_bit(self.currbit_ss,self.currbit_es,(self.currbit_ss+self.samples_pp))]
+                results += [self.handle_bit_dshot(self.currbit_ss, self.currbit_es, (self.currbit_ss + self.samples_pp))]
                 self.currbit_ss = None
                 self.currbit_es = None
 
                 # Pass results to decoder
-                self.handle_bits(results)
+                self.handle_bits_dshot(results)
                 results = []
         
 
@@ -209,7 +227,7 @@ class Decoder(srd.Decoder):
                 self.currbit_es = self.samplenum
             elif self.matched[0] and self.currbit_es and self.currbit_ss:
                 # Have complete bit, can handle bit now
-                result = [self.handle_bit(self.currbit_ss,self.currbit_es,self.samplenum)]
+                result = [self.handle_bit_dshot(self.currbit_ss, self.currbit_es, self.samplenum)]
                 # print(result)
                 results += result
                 self.currbit_ss = self.samplenum
