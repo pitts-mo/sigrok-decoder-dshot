@@ -200,48 +200,64 @@ class Decoder(srd.Decoder):
         
         results = []
         while True:
-            if not self.bidirectional:
-                pins = self.wait([{0: 'r'}, {0: 'f'}, {'skip':self.samples_after_motorcmd}])
-            else:
-                if self.state == State.CMD:
+
+            match self.state:
+                case State.CMD:
+                    if not self.bidirectional:
+                        pins = self.wait([{0: 'r'}, {0: 'f'}, {'skip': self.samples_after_motorcmd}])
+                    else:
+                        pins = self.wait([{0: 'f'}, {0: 'r'}, {'skip': self.samples_after_motorcmd}])
                     #TODO: Increase skip to maximum time for effiency
                     #TODO: Mark any changes in this time as errors?  Option to reduce load?
-                    pins = self.wait([{0: 'f'}, {0: 'r'}, {'skip':self.samples_after_motorcmd}])
-                elif self.state == State.TELEM:
-                    # First wait for falling edge (idle high)
-                    # Then skip x samples and sample
-                    # Repeat for 21 bits (TBC)
 
-                    pins = self.wait([{0: 'f'}, {0: 'r'}, {'skip': self.samples_after_motorcmd}])
-                #TODO: What happens if it gets stuck in the wrong state?
+                    if self.currbit_ss and self.currbit_es and self.matched[2]:
+                        # Assume end of packet if have seen start and end of a potential bit but no further change within 3 periods
+                        # TODO: Confirm wait period this works with spec
+                        results += [self.handle_bit_dshot(self.currbit_ss, self.currbit_es,
+                                                          (self.currbit_ss + self.samples_pp))]
+                        self.currbit_ss = None
+                        self.currbit_es = None
+
+                        # Pass results to decoder
+                        result = self.handle_bits_dshot(results)
+                        if result and self.bidirectional:
+                            self.state = State.TELEM
+                        results = []
+
+                    if self.matched[0] and not self.currbit_ss and not self.currbit_es:
+                        # Start of bit
+                        self.currbit_ss = self.samplenum
+                    elif self.matched[1] and self.currbit_ss and not self.currbit_es:
+                        # End of bit
+                        self.currbit_es = self.samplenum
+                    elif self.matched[0] and self.currbit_es and self.currbit_ss:
+                        # Have complete bit, can handle bit now
+                        result = [self.handle_bit_dshot(self.currbit_ss, self.currbit_es, self.samplenum)]
+                        # print(result)
+                        results += result
+                        self.currbit_ss = self.samplenum
+                        self.currbit_es = None
+                case State.TELEM:
+                    match self.state_telem:
+                        case State_Telem.START:
+                            # First wait for falling edge (idle high)
+                            pins = self.wait([{0: 'f'}])
+                            # Save start pulse
+                            self.telem_start = self.samplenum
+                            self.state_telem = State_Telem.RECV
+                            # Check if still low after 1/8 bitlength
+                        case State_Telem.RECV:
+                            pins = self.wait([{'skip': self.telem_baudrate_midpoint}])
+                            # If not mark as error
+
+                            # Then skip x samples and sample
+                            # Repeat for 21 bits (TBC)
+
+            #TODO: What happens if it gets stuck in the wrong state?
 
 
 
-            if self.currbit_ss and self.currbit_es and self.matched[2]:
-                # Assume end of packet if have seen start and end of a potential bit but no further change within 3 periods
-                # TODO: Confirm wait period this works with spec
-                results += [self.handle_bit_dshot(self.currbit_ss, self.currbit_es, (self.currbit_ss + self.samples_pp))]
-                self.currbit_ss = None
-                self.currbit_es = None
 
-                # Pass results to decoder
-                self.handle_bits_dshot(results)
-                results = []
-        
-
-            if self.matched[0] and not self.currbit_ss and not self.currbit_es:
-                # Start of bit
-                self.currbit_ss = self.samplenum
-            elif self.matched[1] and self.currbit_ss and not self.currbit_es:
-                # End of bit
-                self.currbit_es = self.samplenum
-            elif self.matched[0] and self.currbit_es and self.currbit_ss:
-                # Have complete bit, can handle bit now
-                result = [self.handle_bit_dshot(self.currbit_ss, self.currbit_es, self.samplenum)]
-                # print(result)
-                results += result
-                self.currbit_ss = self.samplenum
-                self.currbit_es = None
             
              
 
