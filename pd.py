@@ -24,6 +24,24 @@ import sigrokdecode as srd
 from functools import reduce
 
 
+gcr_tables = {
+    0b11001: 0x0,
+    0b11011: 0x1,
+    0b10010: 0x2,
+    0b10011: 0x3,
+    0b11101: 0x4,
+    0b10101: 0x5,
+    0b10110: 0x6,
+    0b10111: 0x7,
+    0b11010: 0x8,
+    0b01001: 0x9,
+    0b01010: 0xa,
+    0b01011: 0xb,
+    0b11110: 0xc,
+    0b01101: 0xd,
+    0b01110: 0xe,
+    0b01111: 0xf
+}
 
 class SamplerateError(Exception):
     pass
