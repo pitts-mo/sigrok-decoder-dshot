@@ -250,9 +250,27 @@ class Decoder(srd.Decoder):
                             pins = self.wait([{0: 'f'}])
                             # Save start pulse
                             self.telem_start = self.samplenum
+                            # Start of first bit immediately
+                            self.currbit_ss = self.samplenum
+                            # Switch to receiving state
                             self.state_telem = State_Telem.RECV
-                            # Check if still low after 1/8 bitlength
+                            # TODO: Check if still low after 1/8 bitlength for error det?
                         case State_Telem.RECV:
+                            # First conditions skips half bit width and matches low
+                            # Second condition skips half bit width and matches high
+                            pins = self.wait([{0: 'l', 'skip': self.telem_baudrate_midpoint},
+                                              {0: 'h', 'skip': self.telem_baudrate_midpoint}])
+                            if self.matched == (True,False):
+                                results += [0]
+                                self.put(self.samplenum-self.telem_baudrate_midpoint, self.samplenum+self.telem_baudrate_midpoint, self.out_ann,
+                                         [5, ['%04d' % 0]])
+                            elif self.matched == (False,True):
+                                results += [1]
+                                self.put(self.samplenum - self.telem_baudrate_midpoint,
+                                         self.samplenum + self.telem_baudrate_midpoint, self.out_ann,
+                                         [5, ['%04d' % 1]])
+
+                            # Skip half bitwidth to end of bit
                             pins = self.wait([{'skip': self.telem_baudrate_midpoint}])
                             # If not mark as error
 
