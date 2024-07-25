@@ -90,7 +90,8 @@ class Decoder(srd.Decoder):
         ('telem_bits', 'Bits', (5,)),
     )
 
-    dshot_period_lookup = {'150': 6.67e-6, '300': 3.33e-6,'600':1.67e-6,'1200':0.83e-6}
+    #dshot_period_lookup = {'150': 6.67e-6, '300': 3.33e-6,'600':1.67e-6,'1200':0.83e-6}
+
 
     def __init__(self):
         self.reset()
@@ -105,6 +106,7 @@ class Decoder(srd.Decoder):
         # self.bits = []
         self.inreset = False
         self.bidirectional = False
+        self.dshot_kbaud = 300e3
         self.dshot_period = 3.33e-6
         self.actual_period = None
         self.halfbitwidth = None
@@ -119,14 +121,15 @@ class Decoder(srd.Decoder):
 
     def start(self):
         self.bidirectional = True if self.options['bidir'] == 'True' else False
-        self.dshot_period = self.dshot_period_lookup[self.options['dshot_rate']]
+        self.dshot_kbaud = int(self.options['dshot_rate'])*1000
+        self.dshot_period = 1/self.dshot_kbaud
         self.samples_pp =  int(self.samplerate*self.dshot_period)
         self.samples_after_motorcmd = self.samples_pp * 3
         self.samples_after_telempkt = self.samples_pp * 3
         # self.halfbitwidth = int((self.samplerate / self.dshot_period) / 2.0)
         #print("start period",self.dshot_period)
         self.out_ann = self.register(srd.OUTPUT_ANN)
-        self.telem_baudrate_midpoint = int((self.samplerate / self.dshot_period*(5/4)) / 2.0)
+        self.telem_baudrate_midpoint = int((self.samplerate / (self.dshot_kbaud*(5/4))) / 2.0)
         print("telem_midpoint",self.telem_baudrate_midpoint)
 
     def metadata(self, key, value):
