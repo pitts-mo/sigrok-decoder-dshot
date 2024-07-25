@@ -199,7 +199,14 @@ class Decoder(srd.Decoder):
         [0, ['%d' % bit_]])
         return [ss,nb_ss,bit_]
 
-    
+    def handle_telem_bit(self):
+        if self.matched(True,False,True):
+            return 0
+        elif self.matched(False,True,True):
+            return
+
+
+
     def decode(self):
         if not self.samplerate:
             raise SamplerateError('Cannot decode without samplerate.')
