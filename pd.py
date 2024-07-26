@@ -213,7 +213,7 @@ class Decoder(srd.Decoder):
         # High
         elif matched == (False, True):
             # 1 value
-            results = 1
+            result = 1
             self.put(self.samplenum - self.telem_baudrate_midpoint,
                      self.samplenum + self.telem_baudrate_midpoint, self.out_ann,
                      [5, ['%04d' % 1]])
