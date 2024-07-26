@@ -199,11 +199,25 @@ class Decoder(srd.Decoder):
         [0, ['%d' % bit_]])
         return [ss,nb_ss,bit_]
 
-    def handle_telem_bit(self):
-        if self.matched(True,False,True):
-            return 0
-        elif self.matched(False,True,True):
-            return
+    def handle_telem_bit(self,matched):
+        # None to raise exception if no match
+        result = None
+
+        # Low
+        if matched == (True, False):
+            # 0 value
+            result = 0
+            self.put(self.samplenum - self.telem_baudrate_midpoint, self.samplenum + self.telem_baudrate_midpoint,
+                     self.out_ann,
+                     [5, ['%04d' % 0]])
+        # High
+        elif matched == (False, True):
+            # 1 value
+            results = 1
+            self.put(self.samplenum - self.telem_baudrate_midpoint,
+                     self.samplenum + self.telem_baudrate_midpoint, self.out_ann,
+                     [5, ['%04d' % 1]])
+        return result
 
 
 
@@ -267,18 +281,20 @@ class Decoder(srd.Decoder):
                             # Second condition skips half bit width and matches high
                             pins = self.wait([{0: 'l', 'skip': self.telem_baudrate_midpoint},
                                               {0: 'h', 'skip': self.telem_baudrate_midpoint}])
-                            if self.matched == (True,False):
-                                results += [0]
-                                self.put(self.samplenum-self.telem_baudrate_midpoint, self.samplenum+self.telem_baudrate_midpoint, self.out_ann,
-                                         [5, ['%04d' % 0]])
-                            elif self.matched == (False,True):
-                                results += [1]
-                                self.put(self.samplenum - self.telem_baudrate_midpoint,
-                                         self.samplenum + self.telem_baudrate_midpoint, self.out_ann,
-                                         [5, ['%04d' % 1]])
+
+                            # Low
+                            results += [self.handle_telem_bit(self.matched)]
+
 
                             # Skip half bitwidth to end of bit
                             pins = self.wait([{'skip': self.telem_baudrate_midpoint}])
+                            if len(results) >= 21:
+                                # Do stuff with results
+                                # process_telem_packet(results)
+
+                                results = []
+                                self.state_telem = State_Telem.START
+                                self.state = State.CMD
                             # If not mark as error
 
                             # Then skip x samples and sample
