@@ -206,18 +206,38 @@ class Decoder(srd.Decoder):
         # Low
         if matched == (True, False):
             # 0 value
-            result = 0
+            result = 0b0
             self.put(self.samplenum - self.telem_baudrate_midpoint, self.samplenum + self.telem_baudrate_midpoint,
                      self.out_ann,
                      [5, ['%04d' % 0]])
         # High
         elif matched == (False, True):
             # 1 value
-            result = 1
+            result = 0b1
             self.put(self.samplenum - self.telem_baudrate_midpoint,
                      self.samplenum + self.telem_baudrate_midpoint, self.out_ann,
                      [5, ['%04d' % 1]])
         return result
+
+    def process_telem_erpm(self,packet):
+        print("packet",bin(packet))
+        # Remove leading 0 bit?
+
+        # Undo GCR
+
+        # The upper 12 bit contain the eperiod (1/erps) in the following bitwise encoding:
+        #
+        # e e e m m m m m m m m m
+        #
+        # The 9 bit value M needs to shifted left E times to get the period in micro seconds.
+        # This gives a range of 1 us to 65408 us. Which translates to a min e-frequency of 15.29 hz or for 14 pole motors 3.82 hz.
+        return
+    def process_telem_edt(self,packet):
+        return
+    def process_telem(self,packet):
+        self.process_telem_erpm(packet)
+        return
+
 
 
 
@@ -226,6 +246,7 @@ class Decoder(srd.Decoder):
             raise SamplerateError('Cannot decode without samplerate.')
         
         results = []
+        telem = 0b0
         while True:
 
             match self.state:
@@ -280,19 +301,22 @@ class Decoder(srd.Decoder):
                             pins = self.wait([{0: 'l', 'skip': self.telem_baudrate_midpoint},
                                               {0: 'h', 'skip': self.telem_baudrate_midpoint}])
 
-                            # Low
-                            results += [self.handle_telem_bit(self.matched)]
-
+                            # Append next bit
+                            telem = telem | self.handle_telem_bit(self.matched)
 
                             # Skip half bitwidth to end of bit
                             pins = self.wait([{'skip': self.telem_baudrate_midpoint}])
-                            if len(results) >= 21:
-                                # Do stuff with results
-                                # process_telem_packet(results)
 
-                                results = []
+                            if telem.bit_length() >= 21:
+                                # Do stuff with results
+                                self.process_telem(telem)
+
+                                telem = 0b0
                                 self.state_telem = State_Telem.START
                                 self.state = State.CMD
+                            else:
+                                # Add one bit
+                                telem = telem << 1
                             # If not mark as error
 
                             # Then skip x samples and sample
