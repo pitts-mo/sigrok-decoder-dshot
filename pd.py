@@ -81,13 +81,16 @@ class Decoder(srd.Decoder):
         ('errors', 'Errors'),
         ('telem_bit', 'Telem Bit'),
         ('telem_errors', 'Telem Errors'),
+        ('telem_erpm', 'Telem ERPM'),
+        ('telem_edt', 'Telem EDT'),
 
     )
     annotation_rows = (
         ('bits', 'Bits', (0,)),
         ('dshot_data', 'DShot Data', (1,2,3)),
         ('dshot_errors', 'Dshot Errors', (4,)),
-        ('telem_bits', 'Bits', (5,)),
+        ('telem_bits', 'Telem Bits', (5,)),
+        ('dshot_telem', 'Dshot Telem', (6,7,8)),
     )
 
     #dshot_period_lookup = {'150': 6.67e-6, '300': 3.33e-6,'600':1.67e-6,'1200':0.83e-6}
