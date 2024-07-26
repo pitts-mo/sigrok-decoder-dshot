@@ -70,7 +70,7 @@ class Decoder(srd.Decoder):
 
     options = (
         {'id': 'dshot_rate', 'desc': 'DShot Rate', 'default': '150','values': ('150', '300','600','1200')},
-        { 'id': 'bidir', 'desc': 'Bidirectional DShot','default': 'False', 'values': ('True', 'False')},
+        { 'id': 'bidir', 'desc': 'Bidirectional DShot','default': 'True', 'values': ('True', 'False')},
         { 'id': 'log', 'desc': 'Write log file','default': 'no', 'values': ('yes', 'no')},
     )
     annotations = (
