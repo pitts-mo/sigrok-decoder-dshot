@@ -271,8 +271,6 @@ class Decoder(srd.Decoder):
                             pins = self.wait([{0: 'f'}])
                             # Save start pulse
                             self.telem_start = self.samplenum
-                            # Start of first bit immediately
-                            self.currbit_ss = self.samplenum
                             # Switch to receiving state
                             self.state_telem = State_Telem.RECV
                             # TODO: Check if still low after 1/8 bitlength for error det?
