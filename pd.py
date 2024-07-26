@@ -72,6 +72,7 @@ class Decoder(srd.Decoder):
         {'id': 'dshot_rate', 'desc': 'DShot Rate', 'default': '150','values': ('150', '300','600','1200')},
         { 'id': 'bidir', 'desc': 'Bidirectional DShot','default': 'True', 'values': ('True', 'False')},
         { 'id': 'log', 'desc': 'Write log file','default': 'no', 'values': ('yes', 'no')},
+        {'id': 'edt_force', 'desc': 'Force EDT as telem type', 'default': 'no', 'values': ('True', 'False')},
     )
     annotations = (
         ('bit', 'Bit'),
@@ -121,9 +122,11 @@ class Decoder(srd.Decoder):
         self.telem_start = None
         self.state_telem = State_Telem.START
         self.telem_baudrate_midpoint = 0
+        self.edt_force = False
 
     def start(self):
         self.bidirectional = True if self.options['bidir'] == 'True' else False
+        self.edt_force = True if self.options['edt_force'] == 'True' else False
         self.dshot_kbaud = int(self.options['dshot_rate'])*1000
         self.dshot_period = 1/self.dshot_kbaud
         self.samples_pp =  int(self.samplerate*self.dshot_period)
@@ -238,10 +241,17 @@ class Decoder(srd.Decoder):
         # The 9 bit value M needs to shifted left E times to get the period in micro seconds.
         # This gives a range of 1 us to 65408 us. Which translates to a min e-frequency of 15.29 hz or for 14 pole motors 3.82 hz.
         return
-    def process_telem_edt(self,packet):
+    def process_telem_edt(self,packet,start,end):
+        self.put(start,
+                 end, self.out_ann,
+                 [8, ['%23s' % 's',bin(packet)]])
         return
     def process_telem(self,packet,start,end):
-        self.process_telem_erpm(packet,start,end)
+        if self.edt_force:
+            self.process_telem_edt(packet,start,end)
+        else:
+            self.process_telem_erpm(packet,start,end)
+
         return
 
 
