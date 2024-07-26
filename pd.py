@@ -222,8 +222,11 @@ class Decoder(srd.Decoder):
                      [5, ['%04d' % 1]])
         return result
 
-    def process_telem_erpm(self,packet):
-        print("packet",bin(packet))
+    def process_telem_erpm(self,packet,start,end):
+        #print("packet",bin(packet))
+        self.put(start,
+                 end, self.out_ann,
+                 [7, ['%23s' % bin(packet)]])
         # Remove leading 0 bit?
 
         # Undo GCR
@@ -237,8 +240,8 @@ class Decoder(srd.Decoder):
         return
     def process_telem_edt(self,packet):
         return
-    def process_telem(self,packet):
-        self.process_telem_erpm(packet)
+    def process_telem(self,packet,start,end):
+        self.process_telem_erpm(packet,start,end)
         return
 
 
@@ -250,6 +253,7 @@ class Decoder(srd.Decoder):
         
         results = []
         telem = 0b0
+        tlm_start = 0
         while True:
 
             match self.state:
@@ -294,7 +298,7 @@ class Decoder(srd.Decoder):
                             # First wait for falling edge (idle high)
                             pins = self.wait([{0: 'f'}])
                             # Save start pulse
-                            self.telem_start = self.samplenum
+                            tlm_start = self.samplenum
                             # Switch to receiving state
                             self.state_telem = State_Telem.RECV
                             # TODO: Check if still low after 1/8 bitlength for error det?
@@ -312,7 +316,7 @@ class Decoder(srd.Decoder):
 
                             if telem.bit_length() >= 21:
                                 # Do stuff with results
-                                self.process_telem(telem)
+                                self.process_telem(telem,tlm_start,self.samplenum)
 
                                 telem = 0b0
                                 self.state_telem = State_Telem.START
