@@ -233,11 +233,38 @@ class Decoder(srd.Decoder):
         #print("packet",bin(packet))
         self.put(start,
                  end, self.out_ann,
+                 [6, ['%23s' % bin(packet)]])
+        # Remove leading 0 bit?
+        #print("packet raw" + bin(packet))
+        packet &= 0x0FFFFF
+        packet = (packet^(packet>>1))
+        #print(packet)
+        self.put(start,
+                 end, self.out_ann,
                  [7, ['%23s' % bin(packet)]])
         # Remove leading 0 bit?
 
         # Undo GCR
+        output = 0b0
+        bitmask = 0b11111
+        nibbles = 4
+        print("packet xored with next"+bin(packet))
+        for n in range(nibbles):
+            print(bin(bitmask))
+            gcr_n = bitmask & packet
+            print(bin(gcr_n))
 
+            print((nibbles-(n+1))*5)
+            ungcr = gcr_tables[bin(gcr_n >> (n*5))]
+            print(hex(ungcr))
+            output = (output << 4) | ungcr
+            print(hex(output))
+            bitmask = (bitmask << 5)
+
+
+        self.put(start,
+                 end, self.out_ann,
+                 [8, ['%23s' % (str(hex(ungcr))+" "+str(bin(ungcr))+" "+str(bin(gcr_n)))]])
         # The upper 12 bit contain the eperiod (1/erps) in the following bitwise encoding:
         #
         # e e e m m m m m m m m m
@@ -246,9 +273,7 @@ class Decoder(srd.Decoder):
         # This gives a range of 1 us to 65408 us. Which translates to a min e-frequency of 15.29 hz or for 14 pole motors 3.82 hz.
         return
     def process_telem_edt(self,packet,start,end):
-        self.put(start,
-                 end, self.out_ann,
-                 [8, ['%23s' % 's',bin(packet)]])
+
         return
     def process_telem(self,packet,start,end):
         if self.edt_force:
@@ -330,6 +355,7 @@ class Decoder(srd.Decoder):
 
                             if telem.bit_length() >= 21:
                                 # Do stuff with results
+                                telem = telem << 1
                                 self.process_telem(telem,tlm_start,self.samplenum)
 
                                 telem = 0b0
