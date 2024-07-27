@@ -81,9 +81,10 @@ class Decoder(srd.Decoder):
         ('checksum', 'CRC'),
         ('errors', 'Errors'),
         ('telem_bit', 'Telem Bit'),
-        ('telem_errors', 'Telem Errors'),
         ('telem_erpm', 'Telem ERPM'),
         ('telem_edt', 'Telem EDT'),
+        ('telem_errors', 'Telem Errors'),
+        ('telem_error2', 'Telem Errors2'),
 
     )
     annotation_rows = (
@@ -91,7 +92,10 @@ class Decoder(srd.Decoder):
         ('dshot_data', 'DShot Data', (1,2,3)),
         ('dshot_errors', 'Dshot Errors', (4,)),
         ('telem_bits', 'Telem Bits', (5,)),
-        ('dshot_telem', 'Dshot Telem', (6,7,8)),
+        ('dshot_telem_erpm', 'Dshot Telem ERPM', (6,)),
+        ('dshot_telem_edt', 'Dshot Telem', (7,)),
+        ('dshot_telem_errors', 'Dshot Errors', (8,)),
+        ('dshot_telem_errors2', 'Dshot Errors', (9,)),
     )
 
     #dshot_period_lookup = {'150': 6.67e-6, '300': 3.33e-6,'600':1.67e-6,'1200':0.83e-6}
@@ -212,17 +216,17 @@ class Decoder(srd.Decoder):
         # Low
         if matched == (True, False):
             # 0 value
-            result = 0b0
+            result = 1
             self.put(self.samplenum - self.telem_baudrate_midpoint, self.samplenum + self.telem_baudrate_midpoint,
                      self.out_ann,
-                     [5, ['%04d' % 0]])
+                     [5, ['%04d' % result]])
         # High
         elif matched == (False, True):
             # 1 value
-            result = 0b1
+            result = 0
             self.put(self.samplenum - self.telem_baudrate_midpoint,
                      self.samplenum + self.telem_baudrate_midpoint, self.out_ann,
-                     [5, ['%04d' % 1]])
+                     [5, ['%04d' % result]])
         return result
 
     def process_telem_erpm(self,packet,start,end):
