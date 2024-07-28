@@ -240,10 +240,20 @@ class Decoder(srd.Decoder):
             output = (output << 4) | ungcr
             bitmask = (bitmask >> 5)
 
-        self.put(start,
-                 end, self.out_ann,
-                 [8, ['%23s' % (str(hex(ungcr))+" "+str(bin(ungcr))+" "+str(bin(gcr_n)))]])
+        # Compare CRC
+        crc_received = output & 0xF
+        output = (output >> 4) & 0xFFF
+        crc_calc = ~((output ^ (output >> 4) ^ (output >> 8))) & 0x0F
 
+
+
+        self.put(end - ((self.telem_baudrate_midpoint * 2)*4),
+                 end, self.out_ann,
+                 [7, ['%23s' % ("RX CRC: "+hex(crc_received)+" Calc CRC: "+hex(crc_calc))]])
+        if crc_calc != crc_received:
+            self.put(end - ((self.telem_baudrate_midpoint * 2) * 4),
+                     end, self.out_ann,
+                     [8, ['%23s' % ("CRC ERROR!")]])
         # The upper 12 bit contain the eperiod (1/erps) in the following bitwise encoding:
         #
         # e e e m m m m m m m m m
