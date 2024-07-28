@@ -235,18 +235,9 @@ class Decoder(srd.Decoder):
         print(bin(bitmask))
 
         for n in range(nibbles):
-            print(bin(bitmask))
             gcr_n = bitmask & packet
-            print(bin(gcr_n))
-
-            print((nibbles-(n+1))*5)
-            print(bin(gcr_n >> (nibbles - (n + 1)) * 5))
-
             ungcr = gcr_tables[bin(gcr_n >> (nibbles - (n + 1)) * 5)]
-
-            print(hex(ungcr))
             output = (output << 4) | ungcr
-            print(hex(output))
             bitmask = (bitmask >> 5)
 
         self.put(start,
