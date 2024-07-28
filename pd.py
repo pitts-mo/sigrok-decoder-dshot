@@ -204,16 +204,11 @@ class Decoder(srd.Decoder):
         if matched == (True, False):
             # 0 value
             result = 0
-            self.put(self.samplenum - self.telem_baudrate_midpoint, self.samplenum + self.telem_baudrate_midpoint,
-                     self.out_ann,
-                     [5, ['%04d' % result]])
+
         # High
         elif matched == (False, True):
             # 1 value
             result = 1
-            self.put(self.samplenum - self.telem_baudrate_midpoint,
-                     self.samplenum + self.telem_baudrate_midpoint, self.out_ann,
-                     [5, ['%04d' % result]])
         return result
 
     def process_telem_erpm(self,packet,start,end):
@@ -336,7 +331,12 @@ class Decoder(srd.Decoder):
                                               {0: 'h', 'skip': self.telem_baudrate_midpoint}])
 
                             # Append next bit
-                            telem = telem | self.handle_telem_bit(self.matched)
+                            curr_bit = self.handle_telem_bit(self.matched)
+                            self.put(self.samplenum - self.telem_baudrate_midpoint,
+                                     self.samplenum + self.telem_baudrate_midpoint,
+                                     self.out_ann,
+                                     [5, ['%04d' % curr_bit]])
+                            telem = telem | curr_bit
 
                             # Skip half bitwidth to end of bit
                             pins = self.wait([{'skip': self.telem_baudrate_midpoint}])
