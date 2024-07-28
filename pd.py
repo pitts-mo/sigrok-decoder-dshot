@@ -232,7 +232,6 @@ class Decoder(srd.Decoder):
 
         nibbles = 4
         bitmask = 0b11111 << ((nibbles-1)*5)
-        print(bin(bitmask))
 
         for n in range(nibbles):
             gcr_n = bitmask & packet
