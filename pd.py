@@ -108,11 +108,8 @@ class Decoder(srd.Decoder):
         self.state = State.CMD
         self.samplerate = None
 
-        # self.oldpin = None
-        # self.ss_packet = None
-        # self.ss = None
-        # self.es = None
-        # self.bits = []
+        self.debug = False
+
         self.inreset = False
         self.bidirectional = False
         self.dshot_kbaud = 300e3
@@ -137,11 +134,11 @@ class Decoder(srd.Decoder):
         self.samples_pp =  int(self.samplerate*self.dshot_period)
         self.samples_after_motorcmd = self.samples_pp * 3
         self.samples_after_telempkt = self.samples_pp * 3
-        # self.halfbitwidth = int((self.samplerate / self.dshot_period) / 2.0)
-        #print("start period",self.dshot_period)
+
         self.out_ann = self.register(srd.OUTPUT_ANN)
         self.telem_baudrate_midpoint = int((self.samplerate / (self.dshot_kbaud*(5/4))) / 2.0)
-        print("telem_midpoint",self.telem_baudrate_midpoint)
+        if self.debug:
+            print("telem_midpoint",self.telem_baudrate_midpoint)
 
     def metadata(self, key, value):
         if key == srd.SRD_CONF_SAMPLERATE:
@@ -149,10 +146,7 @@ class Decoder(srd.Decoder):
 
     def handle_bits_dshot(self, results):
         #ss, es, bit
-        #print(results)
         bits = [result[2] for result in results]
-        # print(bits)
-
 
         if len(bits) == 16:
             dshot_value = int(reduce(lambda a, b: (a << 1) | b, bits[:11]))
@@ -188,19 +182,11 @@ class Decoder(srd.Decoder):
             if not crc_ok:
                 self.put(crc_startsample, results[15][1], self.out_ann,
                      [4, ['CRC INVALID']])
-         
-
-            self.bits = []
-            self.ss_packet = None
             return True
         else:
             return False
-            #  self.put(results[0][0], results[-1::1][1], self.out_ann,
-            #              [1, ['ERROR: INVALID PACKET LENGTH', 'ERR', 'E']])
-
 
     def handle_bit_dshot(self, ss, es, nb_ss):
-
         period = nb_ss - ss
         duty = es - ss
         # Ideal duty for T0H: 33%, T1H: 66%.
@@ -231,15 +217,13 @@ class Decoder(srd.Decoder):
         return result
 
     def process_telem_erpm(self,packet,start,end):
-        #print("packet",bin(packet))
+        # Raw packet
         self.put(start,
                  end, self.out_ann,
                  [6, ['%23s' % bin(packet)]])
-        # Remove leading 0 bit?
-        #print("packet raw" + bin(packet))
+        # XOR with next?
         packet &= 0x0FFFFF
         packet = (packet^(packet>>1))
-        #print(packet)
         self.put(start,
                  end, self.out_ann,
                  [7, ['%23s' % bin(packet)]])
@@ -247,10 +231,9 @@ class Decoder(srd.Decoder):
         output = 0b0
 
         nibbles = 4
-        #bitmask = 0b11111
         bitmask = 0b11111 << ((nibbles-1)*5)
         print(bin(bitmask))
-        print("packet xored with next"+bin(packet))
+
         for n in range(nibbles):
             print(bin(bitmask))
             gcr_n = bitmask & packet
@@ -258,20 +241,18 @@ class Decoder(srd.Decoder):
 
             print((nibbles-(n+1))*5)
             print(bin(gcr_n >> (nibbles - (n + 1)) * 5))
-            #Lef
+
             ungcr = gcr_tables[bin(gcr_n >> (nibbles - (n + 1)) * 5)]
-            #Right shift bottom 5 (5 LSB)
-            #ungcr = gcr_tables[bin(gcr_n >> (n*5))]
+
             print(hex(ungcr))
             output = (output << 4) | ungcr
             print(hex(output))
-            #itmask = (bitmask << 5)
             bitmask = (bitmask >> 5)
-
 
         self.put(start,
                  end, self.out_ann,
                  [8, ['%23s' % (str(hex(ungcr))+" "+str(bin(ungcr))+" "+str(bin(gcr_n)))]])
+
         # The upper 12 bit contain the eperiod (1/erps) in the following bitwise encoding:
         #
         # e e e m m m m m m m m m
@@ -361,16 +342,14 @@ class Decoder(srd.Decoder):
                             pins = self.wait([{'skip': self.telem_baudrate_midpoint}])
 
                             if telem.bit_length() >= 20-1:
-                                # Do stuff with results
-                                #telem = telem << 1
                                 self.process_telem(telem,tlm_start,self.samplenum)
 
+                                # Reset
                                 telem = 0b0
                                 self.state_telem = State_Telem.START
                                 self.state = State.CMD
                             else:
-                                # Add one bit
-                                #pass
+                                # Shift for next bit
                                 telem = telem << 1
                             # If not mark as error
 
