@@ -107,6 +107,7 @@ class Decoder(srd.Decoder):
     def reset(self):
         self.state = State.CMD
         self.samplerate = None
+
         # self.oldpin = None
         # self.ss_packet = None
         # self.ss = None
@@ -216,14 +217,14 @@ class Decoder(srd.Decoder):
         # Low
         if matched == (True, False):
             # 0 value
-            result = 1
+            result = 0
             self.put(self.samplenum - self.telem_baudrate_midpoint, self.samplenum + self.telem_baudrate_midpoint,
                      self.out_ann,
                      [5, ['%04d' % result]])
         # High
         elif matched == (False, True):
             # 1 value
-            result = 0
+            result = 1
             self.put(self.samplenum - self.telem_baudrate_midpoint,
                      self.samplenum + self.telem_baudrate_midpoint, self.out_ann,
                      [5, ['%04d' % result]])
@@ -242,12 +243,13 @@ class Decoder(srd.Decoder):
         self.put(start,
                  end, self.out_ann,
                  [7, ['%23s' % bin(packet)]])
-        # Remove leading 0 bit?
-
         # Undo GCR
         output = 0b0
-        bitmask = 0b11111
+
         nibbles = 4
+        #bitmask = 0b11111
+        bitmask = 0b11111 << ((nibbles-1)*5)
+        print(bin(bitmask))
         print("packet xored with next"+bin(packet))
         for n in range(nibbles):
             print(bin(bitmask))
@@ -255,11 +257,16 @@ class Decoder(srd.Decoder):
             print(bin(gcr_n))
 
             print((nibbles-(n+1))*5)
-            ungcr = gcr_tables[bin(gcr_n >> (n*5))]
+            print(bin(gcr_n >> (nibbles - (n + 1)) * 5))
+            #Lef
+            ungcr = gcr_tables[bin(gcr_n >> (nibbles - (n + 1)) * 5)]
+            #Right shift bottom 5 (5 LSB)
+            #ungcr = gcr_tables[bin(gcr_n >> (n*5))]
             print(hex(ungcr))
             output = (output << 4) | ungcr
             print(hex(output))
-            bitmask = (bitmask << 5)
+            #itmask = (bitmask << 5)
+            bitmask = (bitmask >> 5)
 
 
         self.put(start,
@@ -353,9 +360,9 @@ class Decoder(srd.Decoder):
                             # Skip half bitwidth to end of bit
                             pins = self.wait([{'skip': self.telem_baudrate_midpoint}])
 
-                            if telem.bit_length() >= 21:
+                            if telem.bit_length() >= 20-1:
                                 # Do stuff with results
-                                telem = telem << 1
+                                #telem = telem << 1
                                 self.process_telem(telem,tlm_start,self.samplenum)
 
                                 telem = 0b0
@@ -363,6 +370,7 @@ class Decoder(srd.Decoder):
                                 self.state = State.CMD
                             else:
                                 # Add one bit
+                                #pass
                                 telem = telem << 1
                             # If not mark as error
 
