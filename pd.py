@@ -23,7 +23,7 @@
 import sigrokdecode as srd
 from functools import reduce
 from enum import Enum
-from dshot.protocols_motor import DshotProtocol
+from dshot.protocols_motor import DshotCmd, BitDshot, DshotSettings
 
 gcr_tables = {
     "0b11001": 0x0,
@@ -112,29 +112,27 @@ class Decoder(srd.Decoder):
         self.debug = False
 
         self.inreset = False
-        self.bidirectional = False
-        self.dshot_kbaud = 300e3
-        self.dshot_period = 3.33e-6
+
         self.actual_period = None
-        self.halfbitwidth = None
+        #self.halfbitwidth = None
         self.currbit_ss = None
         self.currbit_es = None
-        self.samples_after_motorcmd = None
-        self.samples_pp = None
+
 
         self.telem_start = None
         self.state_telem = State_Telem.START
         self.telem_baudrate_midpoint = 0
         self.edt_force = False
 
+        self.dshot_cfg = DshotSettings()
+
     def start(self):
-        self.bidirectional = True if self.options['bidir'] == 'True' else False
-        self.edt_force = True if self.options['edt_force'] == 'True' else False
-        self.dshot_kbaud = int(self.options['dshot_rate'])*1000
-        self.dshot_period = 1/self.dshot_kbaud
-        self.samples_pp =  int(self.samplerate*self.dshot_period)
-        self.samples_after_motorcmd = self.samples_pp * 3
-        self.samples_after_telempkt = self.samples_pp * 3
+        self.dshot_cfg.bidirectional = True if self.options['bidir'] == 'True' else False
+        self.dshot_cfg.edt_force = True if self.options['edt_force'] == 'True' else False
+        self.dshot_cfg.dshot_kbaud = int(self.options['dshot_rate'])*1000
+        self.dshot_cfg.samplerate = self.samplerate
+        self.dshot_cfg.update()
+
 
         self.out_ann = self.register(srd.OUTPUT_ANN)
         self.telem_baudrate_midpoint = int((self.samplerate / (self.dshot_kbaud*(5/4))) / 2.0)
@@ -147,68 +145,73 @@ class Decoder(srd.Decoder):
 
 
 
-    def display_dshot(self,results):
-        crc_startsample = results[12][0]
+    def display_dshot(self,dshot):
+        crc_startsample = dshot.results[12].ss
 
         # Split annotation based on value type
-        if dshot_value < 48:
+        if dshot.dshot_value < 48:
             # Command
-            self.put(results[0][0], crc_startsample, self.out_ann,
-                     [1, ['%04d' % dshot_value]])
+            self.put(dshot.results[0].ss, crc_startsample, self.out_ann,
+                     [1, ['%04d' % dshot.dshot_value]])
         else:
             # Throttle
-            self.put(results[0][0], crc_startsample, self.out_ann,
-                     [2, ['%04d' % dshot_value]])
+            self.put(dshot.results[0].ss, crc_startsample, self.out_ann,
+                     [2, ['%04d' % dshot.dshot_value]])
 
-        self.put(crc_startsample, results[15][1], self.out_ann,
-                 [3, ['Calc CRC: ' + ('%04d' % calculated_crc) + ' TXed CRC:' + ('%04d' % received_crc)]])
-        if not crc_ok:
-            self.put(crc_startsample, results[15][1], self.out_ann,
+        self.put(crc_startsample, dshot.results[15].es, self.out_ann,
+                 [3, ['Calc CRC: ' + ('%04d' % dshot.crc_calc) + ' TXed CRC:' + ('%04d' % dshot.crc_recv)]])
+        if not dshot.crc_ok:
+            self.put(crc_startsample, dshot.results[15].es, self.out_ann,
                      [4, ['CRC INVALID']])
 
 
-        self.put(ss, nb_ss, self.out_ann,
-                 [0, ['%d' % bit_]])
+    def complete_DshotBit(self, *args):
+        bitseq = BitDshot(*args)
 
+        self.put(bitseq.ss, bitseq.es, self.out_ann,
+                 [0, ['%d' % bool(bitseq)]])
+        return [bitseq]
 
     def decode(self):
         if not self.samplerate:
             raise SamplerateError('Cannot decode without samplerate.')
 
-        dshot_value = DshotProtocol()
-
+        dshot_value = DshotCmd(self.dshot_cfg)
         results = []
         telem = 0b0
         tlm_start = 0
+
+        #bitseq = BitDshot()
         while True:
 
             match self.state:
                 case State.CMD:
-                    if not self.bidirectional:
-                        pins = self.wait([{0: 'r'}, {0: 'f'}, {'skip': self.samples_after_motorcmd}])
+                    if not self.dshot_cfg.bidirectional:
+                        pins = self.wait([{0: 'r'}, {0: 'f'}, {'skip': self.dshot_cfg.samples_after_motorcmd}])
                     else:
-                        pins = self.wait([{0: 'f'}, {0: 'r'}, {'skip': self.samples_after_motorcmd}])
+                        pins = self.wait([{0: 'f'}, {0: 'r'}, {'skip': self.dshot_cfg.samples_after_motorcmd}])
                     #TODO: Increase skip to maximum time for effiency
                     #TODO: Mark any changes in this time as errors?  Option to reduce load?
 
                     if self.currbit_ss and self.currbit_es and self.matched[2]:
                         # Assume end of packet if have seen start and end of a potential bit but no further change within 3 periods
                         # TODO: Confirm wait period this works with spec
-                        bit = dshot_value.handle_bit_dshot(self.currbit_ss, self.currbit_es,
-                                                          (self.currbit_ss + self.samples_pp))
-                        results += [bit]
-                        print(bit)
 
-                        self.put(self.currbit_ss, self.currbit_es, self.out_ann,
-                                 [0, ['%d' % bit[2]]])
+                        args = self.currbit_ss, self.currbit_es, (self.currbit_ss + self.dshot_cfg.samples_pp)
+                        results += self.complete_DshotBit(*args)
                         self.currbit_ss = None
                         self.currbit_es = None
-
+                        #print(results)
                         # Pass results to decoder
+
                         result = dshot_value.handle_bits_dshot(results)
-                        if result and self.bidirectional:
-                            self.state = State.TELEM
+                        if result:
+                            self.display_dshot(dshot_value)
+                        # if result and self.dshot_cfg.bidirectional:
+                        #     self.state = State.TELEM
+
                         results = []
+                        #dshot_value = DshotCmd(self.dshot_cfg)
 
                     if self.matched[0] and not self.currbit_ss and not self.currbit_es:
                         # Start of bit
@@ -218,12 +221,9 @@ class Decoder(srd.Decoder):
                         self.currbit_es = self.samplenum
                     elif self.matched[0] and self.currbit_es and self.currbit_ss:
                         # Have complete bit, can handle bit now
-                        bit = dshot_value.handle_bit_dshot(self.currbit_ss, self.currbit_es,
-                                                           (self.currbit_ss + self.samples_pp))
-                        results += [bit]
-                        print(bit)
-                        self.put(self.currbit_ss, self.currbit_es, self.out_ann,
-                                 [0, ['%d' % bit[2]]])
+                        args = self.currbit_ss, self.currbit_es, self.samplenum
+                        results += self.complete_DshotBit(*args)
+
                         self.currbit_ss = self.samplenum
                         self.currbit_es = None
                 case State.TELEM:
