@@ -128,30 +128,53 @@ class DshotCmd(DshotCommon):
         return True
             # TODO: Align this correctly
 
-class DshotTelem(DshotCommon):
-    def __init__(self,*args):
-        super().__init__(*args)
-        self.results = None
-        self.dshot_value = None
-        self.telem_request = None
-        return
-    def handle_telem_bit(self, matched):
-        # Low
+class Bit_DshotTelem(Sequence):
+    def __init__(self, ss, ts, es, matched):
+        super().__init__()
+        self.period = None
+        self.duty = None
+        self.bit_ = None
+
+        # Only start sample on first bit is truly known, all other ss/es are guessed based on midpoint
+        self.ss, self.ts, self.es = ss, ts, es
+        self.process_bit(matched)
+
+    def process_bit(self,matched):
+        # Low/High @ given sample
         if matched == (True, False):
             # 0 value
-            return 0
+            self.bit_ = 0
 
         # High
         if matched == (False, True):
             # 1 value
-            return 1
+            self.bit_ = 1
+        if self.bit_ is None:
+            raise ValueError
+        return self.bit_
 
-    def process_telem_erpm(self, packet, start, end):
+class DshotTelem(DshotCommon):
+    def __init__(self,*args):
+        super().__init__(*args)
+        self.results = []
+        self.bits = 0
+        self.dshot_value = None
+        self.telem_request = None
+        return
+
+    def add_bit(self, seq):
+        self.results += [seq]
+        self.bits = self.bits | seq.bit_
+        self.bits = self.bits << 1
+        print(bin(self.bits))
+
+
+    def process_telem_erpm(self):
         # Raw packet
         #self.put(start, end, self.out_ann, [6, ['%23s' % bin(packet)]])
         # XOR with next?
-        packet &= 0x0FFFFF
-        packet = (packet ^ (packet >> 1))
+        self.bits &= 0x0FFFFF
+        self.bits = (self.bits ^ (self.bits >> 1))
         #self.put(start,end, self.out_ann, [7, ['%23s' % bin(packet)]])
         # Undo GCR
         output = 0b0
@@ -160,9 +183,10 @@ class DshotTelem(DshotCommon):
         bitmask = 0b11111 << ((nibbles - 1) * 5)
 
         for n in range(nibbles):
-            gcr_n = bitmask & packet
+            gcr_n = bitmask & self.bits
             ungcr = gcr_tables[bin(gcr_n >> (nibbles - (n + 1)) * 5)]
             output = (output << 4) | ungcr
+            print(bin(gcr_n)+bin(ungcr)+bin(output)+bin(bitmask))
             bitmask = (bitmask >> 5)
 
         # Compare CRC
@@ -185,14 +209,14 @@ class DshotTelem(DshotCommon):
         # This gives a range of 1 us to 65408 us. Which translates to a min e-frequency of 15.29 hz or for 14 pole motors 3.82 hz.
         return
 
-    def process_telem_edt(self, packet, start, end):
+    def process_telem_edt(self):
 
         return
 
-    def process_telem(self, packet, start, end):
-        if self.edt_force:
-            self.process_telem_edt(packet, start, end)
+    def process_telem(self):
+        if self.cfg.edt_force:
+            self.process_telem_edt()
         else:
-            self.process_telem_erpm(packet, start, end)
+            self.process_telem_erpm()
 
         return

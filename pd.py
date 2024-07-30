@@ -23,7 +23,7 @@
 import sigrokdecode as srd
 from functools import reduce
 from enum import Enum
-from dshot.protocols_motor import DshotCmd, BitDshot, DshotSettings
+from dshot.protocols_motor import DshotCmd, DshotTelem, BitDshot, DshotSettings, Bit_DshotTelem
 
 
 
@@ -31,12 +31,16 @@ class SamplerateError(Exception):
     pass
 
 class State(Enum):
-    CMD = 1,
+    RESET = 0
+    CMD = 1
     TELEM = 2
 
+
 class State_Telem(Enum):
-    START = 1,
+    RESET = 0
+    START = 1
     RECV = 2
+
 
 class Decoder(srd.Decoder):
     api_version = 3
@@ -148,6 +152,7 @@ class Decoder(srd.Decoder):
             raise SamplerateError('Cannot decode without samplerate.')
 
         dshot_value = DshotCmd(self.dshot_cfg)
+        telem_value = DshotTelem(self.dshot_cfg)
         results = []
         telem = 0b0
         tlm_start = 0
@@ -178,8 +183,8 @@ class Decoder(srd.Decoder):
                         result = dshot_value.handle_bits_dshot(results)
                         if result:
                             self.display_dshot(dshot_value)
-                        # if result and self.dshot_cfg.bidirectional:
-                        #     self.state = State.TELEM
+                        if result and self.dshot_cfg.bidirectional:
+                            self.state = State.TELEM
 
                         results = []
                         #dshot_value = DshotCmd(self.dshot_cfg)
@@ -199,6 +204,10 @@ class Decoder(srd.Decoder):
                         self.currbit_es = None
                 case State.TELEM:
                     match self.state_telem:
+                        case State_Telem.RESET:
+                            telem = 0b0
+                            self.state_telem = State_Telem.START
+
                         case State_Telem.START:
                             # First wait for falling edge (idle high)
                             pins = self.wait([{0: 'f'}])
@@ -210,34 +219,35 @@ class Decoder(srd.Decoder):
                         case State_Telem.RECV:
                             # First conditions skips half bit width and matches low
                             # Second condition skips half bit width and matches high
-                            pins = self.wait([{0: 'l', 'skip': self.telem_baudrate_midpoint},
-                                              {0: 'h', 'skip': self.telem_baudrate_midpoint}])
+                            pins = self.wait([{0: 'l', 'skip': self.dshot_cfg.telem_baudrate_midpoint},
+                                              {0: 'h', 'skip': self.dshot_cfg.telem_baudrate_midpoint}])
 
                             # Append next bit
-                            curr_bit = self.handle_telem_bit(self.matched)
-                            self.put(self.samplenum - self.telem_baudrate_midpoint,
-                                     self.samplenum + self.telem_baudrate_midpoint,
+                            args = (self.samplenum - self.dshot_cfg.telem_baudrate_midpoint), self.samplenum, (self.samplenum + self.dshot_cfg.telem_baudrate_midpoint)
+                            curr_bit = Bit_DshotTelem(*args,self.matched)
+                            self.put(curr_bit.ss,curr_bit.es,
                                      self.out_ann,
-                                     [5, ['%04d' % curr_bit]])
-                            telem = telem | curr_bit
+                                     [5, ['%04d' % curr_bit.bit_]])
+
+                            telem_value.add_bit(curr_bit)
+
 
                             # Skip half bitwidth to end of bit
-                            pins = self.wait([{'skip': self.telem_baudrate_midpoint}])
+                            pins = self.wait([{'skip': self.dshot_cfg.telem_baudrate_midpoint}])
 
-                            if telem.bit_length() >= 20-1:
-                                self.process_telem(telem,tlm_start,self.samplenum)
+                            if telem_value.bits.bit_length() >= 20:
+                                telem_value.process_telem()
 
                                 # Reset
-                                telem = 0b0
-                                self.state_telem = State_Telem.START
+                                self.state_telem = State_Telem.RESET
+                                # Except Dshot packet next
                                 self.state = State.CMD
-                            else:
-                                # Shift for next bit
-                                telem = telem << 1
+
                             # If not mark as error
 
                             # Then skip x samples and sample
                             # Repeat for 21 bits (TBC)
+
 
             #TODO: What happens if it gets stuck in the wrong state?
 
