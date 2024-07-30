@@ -23,7 +23,7 @@
 import sigrokdecode as srd
 from functools import reduce
 from enum import Enum
-from dshot.protocols_motor import DshotCmd, DshotTelem, BitDshot, DshotSettings, Bit_DshotTelem
+from dshot.protoDshot import DshotCmd, DshotTelem, BitDshot, DshotSettings, Bit_DshotTelem
 
 
 
