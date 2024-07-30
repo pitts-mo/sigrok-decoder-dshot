@@ -25,24 +25,7 @@ from functools import reduce
 from enum import Enum
 from dshot.protocols_motor import DshotCmd, BitDshot, DshotSettings
 
-gcr_tables = {
-    "0b11001": 0x0,
-    "0b11011": 0x1,
-    "0b10010": 0x2,
-    "0b10011": 0x3,
-    "0b11101": 0x4,
-    "0b10101": 0x5,
-    "0b10110": 0x6,
-    "0b10111": 0x7,
-    "0b11010": 0x8,
-    "0b1001": 0x9,
-    "0b1010": 0xa,
-    "0b1011": 0xb,
-    "0b11110": 0xc,
-    "0b1101": 0xd,
-    "0b1110": 0xe,
-    "0b1111": 0xf
-}
+
 
 class SamplerateError(Exception):
     pass
@@ -107,24 +90,16 @@ class Decoder(srd.Decoder):
 
     def reset(self):
         self.state = State.CMD
+        self.state_telem = State_Telem.START
+
         self.samplerate = None
-
-        self.debug = False
-
         self.inreset = False
-
-        self.actual_period = None
-        #self.halfbitwidth = None
         self.currbit_ss = None
         self.currbit_es = None
 
-
-        self.telem_start = None
-        self.state_telem = State_Telem.START
-        self.telem_baudrate_midpoint = 0
-        self.edt_force = False
-
         self.dshot_cfg = DshotSettings()
+
+        self.debug = False
 
     def start(self):
         self.dshot_cfg.bidirectional = True if self.options['bidir'] == 'True' else False
@@ -133,11 +108,7 @@ class Decoder(srd.Decoder):
         self.dshot_cfg.samplerate = self.samplerate
         self.dshot_cfg.update()
 
-
         self.out_ann = self.register(srd.OUTPUT_ANN)
-        self.telem_baudrate_midpoint = int((self.samplerate / (self.dshot_kbaud*(5/4))) / 2.0)
-        if self.debug:
-            print("telem_midpoint",self.telem_baudrate_midpoint)
 
     def metadata(self, key, value):
         if key == srd.SRD_CONF_SAMPLERATE:

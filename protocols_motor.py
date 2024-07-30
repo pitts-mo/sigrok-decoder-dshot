@@ -1,6 +1,25 @@
 from functools import reduce
 from enum import Enum
 
+gcr_tables = {
+    "0b11001": 0x0,
+    "0b11011": 0x1,
+    "0b10010": 0x2,
+    "0b10011": 0x3,
+    "0b11101": 0x4,
+    "0b10101": 0x5,
+    "0b10110": 0x6,
+    "0b10111": 0x7,
+    "0b11010": 0x8,
+    "0b1001": 0x9,
+    "0b1010": 0xa,
+    "0b1011": 0xb,
+    "0b11110": 0xc,
+    "0b1101": 0xd,
+    "0b1110": 0xe,
+    "0b1111": 0xf
+}
+
 class Sequence():
     def __init__(self):
         self.ss = None
@@ -42,6 +61,9 @@ class DshotSettings():
         self.samples_after_motorcmd = None
         self.samples_after_telempkt = None
         self.samples_pp = None
+        self.telem_baudrate_midpoint = 0
+        self.telem_start = None
+        self.edt_force = False
         self.update()
         return
 
@@ -50,6 +72,7 @@ class DshotSettings():
         self.samples_pp = int(self.samplerate * self.dshot_period)
         self.samples_after_motorcmd = self.samples_pp * 3
         self.samples_after_telempkt = self.samples_pp * 3
+        self.telem_baudrate_midpoint = int((self.samplerate / (self.dshot_kbaud * (5 / 4))) / 2.0)
 
 class DshotCommon():
     def __init__(self,settings_Dshot=DshotSettings()):
@@ -105,34 +128,31 @@ class DshotCmd(DshotCommon):
         return True
             # TODO: Align this correctly
 
-
-
+class DshotTelem(DshotCommon):
+    def __init__(self,*args):
+        super().__init__(*args)
+        self.results = None
+        self.dshot_value = None
+        self.telem_request = None
+        return
     def handle_telem_bit(self, matched):
-        # None to raise exception if no match
-        result = None
-
         # Low
         if matched == (True, False):
             # 0 value
-            result = 0
+            return 0
 
         # High
-        elif matched == (False, True):
+        if matched == (False, True):
             # 1 value
-            result = 1
-        return result
+            return 1
 
     def process_telem_erpm(self, packet, start, end):
         # Raw packet
-        self.put(start,
-                 end, self.out_ann,
-                 [6, ['%23s' % bin(packet)]])
+        #self.put(start, end, self.out_ann, [6, ['%23s' % bin(packet)]])
         # XOR with next?
         packet &= 0x0FFFFF
         packet = (packet ^ (packet >> 1))
-        self.put(start,
-                 end, self.out_ann,
-                 [7, ['%23s' % bin(packet)]])
+        #self.put(start,end, self.out_ann, [7, ['%23s' % bin(packet)]])
         # Undo GCR
         output = 0b0
 
